@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5"
+    />
+    <title>MedsTime — Pill Reminder</title>
+    <meta
+      name="description"
+      content="A beautiful, minimal pill reminder. Schedule OD, BD, TDS, QID or every-N with haptics, notifications and adherence tracking."
+    />
+
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0a14" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f5ff" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- iOS home-screen install -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MedsTime" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
+    <link rel="mask-icon" href="/icons/favicon.svg" color="#8B5CF6" />
+    <meta name="msapplication-TileColor" content="#0b0a14" />
+
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('medstime.state.v1')
+          var pref = raw ? (JSON.parse(raw).settings || {}).theme : 'system'
+          var dark =
+            pref === 'dark' ||
+            (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark'
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      MedsTime needs JavaScript to keep track of your doses. Please enable it to continue.
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

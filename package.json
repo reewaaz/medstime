@@ -1,0 +1,37 @@
+{
+  "name": "medstime",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A beautiful, colorful, minimal pill reminder PWA with haptics, notifications and adherence tracking.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "node scripts/run-tests.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "audit:layout": "node scripts/audit.mjs",
+    "audit:pwa": "node scripts/pwa-check.mjs",
+    "audit:reminders": "node scripts/reminder-check.mjs",
+    "audit": "npm run test && npm run audit:layout && npm run audit:pwa && npm run audit:reminders",
+    "shots": "node scripts/screenshot.mjs"
+  },
+  "dependencies": {
+    "framer-motion": "^12.23.12",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "puppeteer-core": "^25.12.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vite-plugin-pwa": "^1.0.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
