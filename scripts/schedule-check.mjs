@@ -105,6 +105,31 @@ const clickLink = async () => {
   return ok
 }
 
+/**
+ * Wait until the time-pill count holds steady.
+ *
+ * Changing a time re-keys the pill, so framer-motion briefly keeps the
+ * outgoing and incoming pills in the DOM together — a phantom extra dose
+ * if you count during that window. Sample after a short grace period and
+ * require several consecutive equal readings, not just two.
+ */
+const settlePills = async () => {
+  await sleep(250)
+  let previous = -1
+  let stable = 0
+  for (let i = 0; i < 30; i++) {
+    const n = await page.$$eval('.time-pill:not(.time-pill--hero)', (x) => x.length)
+    stable = n === previous ? stable + 1 : 0
+    previous = n
+    if (stable >= 3) return n
+    await sleep(120)
+  }
+  return previous
+}
+
+const manualTimes = () =>
+  page.$$eval('.time-pill:not(.time-pill--hero) input', (n) => n.map((i) => i.value))
+
 const clickFreq = async (code) => {
   const ok = await page.evaluate((c) => {
     const btn = [...document.querySelectorAll('.freq')].find(
@@ -233,6 +258,7 @@ check(
 /* -------------------- 5. individual-times escape hatch --------------- */
 
 await clickLink()
+await settlePills()
 const manualCount = (await page.$$('.time-pill:not(.time-pill--hero) input')).length
 check('escape hatch opens individual inputs', manualCount === 2, `${manualCount} inputs`)
 
@@ -246,14 +272,13 @@ await page.evaluate(() => {
   setter.call(inputs[0], '07:00')
   inputs[0].dispatchEvent(new Event('input', { bubbles: true }))
 })
-await sleep(400)
+await settlePills()
 // Manual times are listed in clock order, so the earliest is index 0.
-const uneven = await page.$$eval('.time-pill:not(.time-pill--hero) input', (n) =>
-  n.map((i) => i.value),
-)
+const uneven = await manualTimes()
 check('an individual time can be overridden', same(uneven, ['07:00', '18:00']), uneven.join(' '))
 
 await clickLink()
+await settlePills()
 const relanded = await preview()
 check(
   'and can be snapped back to the even spread',
