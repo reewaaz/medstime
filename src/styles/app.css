@@ -1120,6 +1120,100 @@ textarea.input {
   transform: scale(0.94);
 }
 
+/* anchored dose times: one input, the day works itself out */
+
+.time-pill--hero {
+  height: 58px;
+  padding: 0 var(--sp-5);
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.5);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.18);
+}
+
+.time-pill--hero input {
+  height: 56px;
+  font-size: var(--text-lg);
+  font-weight: 750;
+  color: var(--accent);
+}
+
+.anchor-derive {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 var(--sp-3);
+  height: 34px;
+  border-radius: var(--r-full);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  white-space: nowrap;
+}
+
+.spread-preview {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--glass);
+  border: 1px solid var(--hairline);
+}
+
+.spread-preview__label {
+  display: block;
+  margin-bottom: var(--sp-2);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.spread-preview__times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.spread-preview__time {
+  font-family: var(--font-num);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  background: var(--glass-strong);
+}
+
+.spread-preview__time:first-child {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.16);
+}
+
+.spread-preview__more {
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  color: var(--ink-4);
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--sp-3);
+  padding: 6px 2px;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--ink-3);
+  transition: color var(--dur-fast) linear;
+}
+
+.link-btn:active {
+  color: var(--accent);
+}
+
 /* swatches */
 
 .swatches {
@@ -1620,6 +1714,28 @@ textarea.input {
   margin: 0 auto;
   padding: calc(var(--safe-top) + var(--sp-7)) var(--sp-5)
     calc(var(--safe-bottom) + var(--sp-7));
+  overflow-y: auto;
+}
+
+.onboard__install {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.pill-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  color: var(--success, #34d399);
+  background: rgba(52, 211, 153, 0.14);
+  border: 1px solid rgba(52, 211, 153, 0.32);
+  white-space: nowrap;
 }
 
 .onboard__mark {

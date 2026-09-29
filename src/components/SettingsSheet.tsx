@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { haptic, hapticsSupported, unlockHaptics } from '../lib/haptics'
+import { useInstallPrompt } from '../lib/install'
 import {
   notificationSupport,
   registerPeriodicSync,
@@ -65,6 +66,7 @@ export function SettingsSheet({
   const [permission, setPermission] = useState(notificationSupport())
   const [confirmReset, setConfirmReset] = useState(false)
   const { settings } = state
+  const { canPrompt, canOffer, installed, isIos, install } = useInstallPrompt()
 
   const askPermission = async () => {
     unlockHaptics()
@@ -206,6 +208,40 @@ export function SettingsSheet({
                 label="Sound"
               />
             </div>
+
+            {installed || canOffer ? (
+              <div className="switch-row">
+                <div className="switch-row__body">
+                  <div className="switch-row__title">Install MedsTime</div>
+                  <div className="switch-row__sub">
+                    {installed
+                      ? 'Installed — running as an app.'
+                      : isIos
+                        ? 'Tap Share, then Add to Home Screen.'
+                        : 'Run it full-screen, offline, with reminders.'}
+                  </div>
+                </div>
+                {installed ? (
+                  <span className="pill-done">
+                    <Icon name="check" size={12} strokeWidth={2.6} />
+                    Installed
+                  </span>
+                ) : canPrompt ? (
+                  <button
+                    className="btn btn--primary btn--sm"
+                    onClick={async () => {
+                      haptic('press')
+                      const outcome = await install()
+                      if (outcome === 'accepted' || outcome === 'installed') {
+                        pushToast('MedsTime installed', 'ok')
+                      }
+                    }}
+                  >
+                    Install
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -249,6 +285,29 @@ export function SettingsSheet({
         <p className="field__hint">
           Night owls can roll the day over at 4&nbsp;am so late-night doses still count as
           &ldquo;today&rdquo;.
+        </p>
+      </div>
+
+      {/* grace window */}
+      <div className="field">
+        <span className="field__label">Keep a missed dose tappable for</span>
+        <div className="chip-row">
+          {[6, 12, 18, 24].map((h) => (
+            <button
+              key={h}
+              className={`chip${settings.graceHours === h ? ' chip--on' : ''}`}
+              onClick={() => {
+                haptic('tap')
+                actions.setSettings({ graceHours: h })
+              }}
+            >
+              {h} h
+            </button>
+          ))}
+        </div>
+        <p className="field__hint">
+          How long a dose you missed stays on the list so you can still log it. Keep it at 24&nbsp;h
+          if you take anything at midnight.
         </p>
       </div>
 

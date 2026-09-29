@@ -27,18 +27,26 @@ when you take a dose.
 
 **Schedules that match a prescription**
 
-| Code | Meaning | Default times |
-|------|---------|---------------|
-| `OD` | Once daily | 09:00 |
-| `BD` | Twice daily | 09:00, 21:00 |
-| `TDS` | Three times daily | 08:00, 14:00, 20:00 |
-| `QID` | Four times daily | 08:00, 12:00, 16:00, 20:00 |
-| `QHS` | At bedtime | 22:30 |
-| `q**` | Every N min / hr / day | every 6 h from 09:00 |
-| `PRN` | As needed | — |
+Pick a frequency, set your **first dose**, and the rest of the day works
+itself out:
 
-Every time is editable, and `q**` intervals roll around the clock
-overnight — a `q6h` schedule really does give you four doses a day.
+| Code | Meaning | Gap | First dose 06:00 gives |
+|------|---------|-----|--------------------------|
+| `OD` | Once daily | — | 06:00 |
+| `BD` | Twice daily | 12 h | 06:00, 18:00 |
+| `TDS` | Three times daily | 8 h | 06:00, 14:00, 22:00 |
+| `QID` | Four times daily | 6 h | 06:00, 12:00, 18:00, **00:00** |
+| `QHS` | At bedtime | — | one dose |
+| `q**` | Every N min / hr / day | your N | rolls around the clock |
+| `PRN` | As needed | — | — |
+
+Times wrap past midnight rather than being clamped, so a `QID` started at
+18:00 keeps all four doses (18:00, 00:00, 06:00, 12:00) and the app says
+so. One-tap chips cover the common first doses, and the native picker is
+there for everything else.
+
+Not an even spread? **Set each dose time myself** unpins the schedule into
+individual editable times, with a button to snap back to the even spread.
 
 </td>
 <td width="50%">
@@ -88,6 +96,11 @@ Open the link → install icon in the address bar
 Once installed it runs full-screen, offline, and remembers your regimen
 between launches.
 
+You don't have to hunt for the menu: the welcome screen offers **Add
+MedsTime to my home screen** on first run, there's a persistent entry in
+**Settings**, and a bar slides in once you've added your first
+medication.
+
 ---
 
 ## Screens
@@ -123,10 +136,11 @@ npm run audit              # everything below
 
 | Script | What it proves |
 |--------|----------------|
-| `npm test` | Schedule generation (`q6h`, `q15m`, `q2d`, OD/BD/TDS/QID), stable dose IDs, adherence and streak maths |
+| `npm test` | Schedule generation (anchored OD/BD/TDS/QID, `q6h`, `q15m`, `q2d`), stable dose IDs, adherence and streak maths |
 | `npm run audit:layout` | No horizontal overflow, no off-screen elements, no tiny tap targets, no invisible text — across dark/light × all three tabs × the sheets, at 390&nbsp;×&nbsp;844 |
 | `npm run audit:pwa` | Service worker activates, manifest is complete, every icon resolves, and the app shell loads **with the network off** |
 | `npm run audit:reminders` | A due dose fires exactly one notification, respects lead time, never double-fires, never re-fires after logging, and ignores long-stale doses |
+| `npm run audit:schedule` | Driving the real editor: set a first dose and the derived times, the saved schedule, and the Today timeline all agree — including the QID midnight dose and the per-time escape hatch |
 | `npm run shots` | Screenshots of the whole flow into `.tmp/shots` |
 
 ### Icons
@@ -150,10 +164,11 @@ src/
 ├─ lib/
 │  ├─ types.ts        Domain model
 │  ├─ date.ts         Local-calendar date maths (never UTC)
-│  ├─ schedule.ts     Frequency presets + slot generation  ← the core
+│  ├─ schedule.ts     Anchored presets + slot generation  ← the core
 │  ├─ stats.ts        Adherence, streaks, distributions
 │  ├─ store.ts        localStorage + useSyncExternalStore
 │  ├─ engine.ts       Reminder scheduler (ticker + staleness window)
+│  ├─ install.ts      beforeinstallprompt plumbing
 │  ├─ notifications.ts Permission + delivery
 │  ├─ haptics.ts      Vibration patterns + Web Audio chime
 │  └─ colors.ts       Accent palette
@@ -162,6 +177,16 @@ src/
 ├─ sw.ts              Service worker: precache + dose scheduler
 └─ styles/            Design tokens + component CSS
 ```
+
+**Anchored dosing.** `OD`/`BD`/`TDS`/`QID`/`QHS` store an *anchor* — the time
+of the first dose — and the remaining times are spread evenly around the 24-hour
+clock, wrapping past midnight rather than being clamped. A `QID` at 06:00 is
+therefore 06:00, 12:00, 18:00 and 00:00 with one input. The anchor is persisted
+rather than re-derived from the earliest time, so a regimen that crosses
+midnight doesn't drift its first dose to 00:00. Unpinning into individual times
+drops the anchor and the explicit list becomes the source of truth; `isAnchored`
+decides which editing mode the editor opens in, so existing uneven regimens keep
+their exact times.
 
 **Dose identity.** Every dose gets a stable, day-scoped id —
 `medId | YYYY-MM-DD | HH:MM` — so marking a dose taken survives a reload,
@@ -219,6 +244,10 @@ context.
 - **iOS haptics.** Safari supports the Vibration API inconsistently; the
   setting is hidden where the API is absent.
 - **iOS notifications** require the app to be installed to the home screen.
+- **A four-times-a-day regimen crosses midnight.** Any evenly spread `QID`
+  includes a 00:00 dose. MedsTime keeps it on the same calendar day and tells
+  you when the spread runs overnight; if that's wrong for you, unpin the
+  schedule and set the times yourself.
 - **No cloud sync.** Data is per-device by design. Use Export/Import to move
   between phones.
 
@@ -227,8 +256,8 @@ context.
 ## Contributing
 
 Issues and pull requests are welcome. Please run `npm run audit` before
-opening a PR — it covers types, unit tests, layout, PWA installability, and
-the reminder engine.
+opening a PR — it covers types, unit tests, layout, PWA installability, the
+reminder engine, and the schedule editor.
 
 ## Disclaimer
 

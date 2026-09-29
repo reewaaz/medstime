@@ -18,6 +18,12 @@ export interface FixedSchedule {
   kind: 'fixed'
   code: FreqCode
   times: string[]
+  /**
+   * The first dose of the day, "HH:MM" — the anchor the other doses are
+   * spread from. Optional so schedules saved before anchoring existed
+   * still load; those fall back to the earliest time in `times`.
+   */
+  anchor?: string
 }
 
 /**

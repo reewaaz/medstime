@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Icon, type IconName } from './Icon'
 import { haptic } from '../lib/haptics'
+import { useInstallPrompt } from '../lib/install'
 
 /* ------------------------------------------------------------------ *
  * Bottom tab bar with a centre "+" action and a sliding indicator.
@@ -77,68 +78,22 @@ export function BottomNav({
 /* ------------------------------------------------------------------ *
  * Install prompt.
  *
- * Chromium fires `beforeinstallprompt`, which we stash until the user
- * has actually added a medication — the moment installing is most
- * compelling. iOS has no such event, so we detect it and show the
- * "Share → Add to Home Screen" instructions instead.
+ * The plumbing lives in lib/install. This is the floating bar that
+ * slides in above the nav once there's a medication to remind you
+ * about — the moment installing is most compelling. iOS has no install
+ * event, so there we show Share -> Add to Home Screen instead.
  * ------------------------------------------------------------------ */
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
-
-let deferredPrompt: BeforeInstallPromptEvent | null = null
-
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
-    deferredPrompt = e as BeforeInstallPromptEvent
-    window.dispatchEvent(new CustomEvent('medstime:installable'))
-  })
-  window.addEventListener('appinstalled', () => {
-    deferredPrompt = null
-    window.dispatchEvent(new CustomEvent('medstime:installed'))
-  })
-}
-
-export function isIos(): boolean {
-  if (typeof navigator === 'undefined') return false
-  return (
-    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  )
-}
-
-export function isStandalone(): boolean {
-  if (typeof window === 'undefined') return false
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (navigator as { standalone?: boolean }).standalone === true
-  )
-}
-
 export function InstallBar({ onDismiss }: { onDismiss: () => void }) {
-  const [ready, setReady] = useState(false)
-  const ios = isIos()
+  const { canOffer, canPrompt, installed, isIos, install } = useInstallPrompt()
+  const [declined, setDeclined] = useState(false)
 
-  useEffect(() => {
-    const onReady = () => setReady(true)
-    window.addEventListener('medstime:installable', onReady)
-    if (deferredPrompt) setReady(true)
-    return () => window.removeEventListener('medstime:installable', onReady)
-  }, [])
+  if (installed || !canOffer || declined) return null
 
-  if (isStandalone() || (!ready && !ios)) return null
-
-  const install = async () => {
-    if (deferredPrompt) {
-      await deferredPrompt.prompt()
-      const choice = await deferredPrompt.userChoice
-      deferredPrompt = null
-      if (choice.outcome === 'accepted') onDismiss()
-      else setReady(false)
-    }
+  const promptInstall = async () => {
+    const outcome = await install()
+    if (outcome === 'accepted' || outcome === 'installed') onDismiss()
+    if (outcome === 'dismissed') setDeclined(true)
   }
 
   return (
@@ -147,7 +102,7 @@ export function InstallBar({ onDismiss }: { onDismiss: () => void }) {
         <Icon name="download" size={17} />
       </div>
       <div className="alert-strip__text">
-        {ios ? (
+        {isIos ? (
           <>
             <b>Install MedsTime</b> — tap{' '}
             <Icon name="share" size={12} style={{ display: 'inline', verticalAlign: '-2px' }} /> Share,
@@ -159,8 +114,8 @@ export function InstallBar({ onDismiss }: { onDismiss: () => void }) {
           </>
         )}
       </div>
-      {!ios ? (
-        <button className="btn btn--primary btn--sm" onClick={install}>
+      {canPrompt ? (
+        <button className="btn btn--primary btn--sm" onClick={promptInstall}>
           Install
         </button>
       ) : null}

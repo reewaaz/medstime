@@ -28,6 +28,17 @@ import type {
 
 /* ----------------------------- presets ----------------------------- */
 
+/**
+ * Spread `count` doses evenly around the clock, starting at `anchor`.
+ * Wraps past midnight rather than clamping, so a 4-a-day regimen started
+ * at 18:00 keeps all four doses (18:00, 00:00, 06:00, 12:00).
+ */
+function spread(count: number, anchor: string): string[] {
+  const start = timeToMinutes(anchor)
+  const gap = count > 1 ? Math.round(1440 / count) : 1440
+  return Array.from({ length: count }, (_, i) => minutesToTime(start + i * gap))
+}
+
 export interface FrequencyPreset {
   code: FreqCode
   label: string
@@ -35,6 +46,9 @@ export interface FrequencyPreset {
   expansion: string
   dosesPerDay: number
   icon: string
+  /** Clock time the user is expected to take their *first* dose. */
+  defaultAnchor: string
+  /** Evenly spread from `defaultAnchor`; kept as a fallback and for old data. */
   defaultTimes: string[]
   blurb: string
 }
@@ -47,8 +61,9 @@ export const FREQUENCY_PRESETS: FrequencyPreset[] = [
     expansion: 'Once a day',
     dosesPerDay: 1,
     icon: '\u25CF',
-    defaultTimes: ['09:00'],
-    blurb: 'One dose each day',
+    defaultAnchor: '09:00',
+    defaultTimes: spread(1, '09:00'),
+    blurb: 'One dose at the same time every day',
   },
   {
     code: 'BD',
@@ -57,8 +72,9 @@ export const FREQUENCY_PRESETS: FrequencyPreset[] = [
     expansion: 'Bis die',
     dosesPerDay: 2,
     icon: '\u25D0',
-    defaultTimes: ['09:00', '21:00'],
-    blurb: 'Morning and night',
+    defaultAnchor: '09:00',
+    defaultTimes: spread(2, '09:00'),
+    blurb: 'Every 12 hours — set your first dose and the rest follow',
   },
   {
     code: 'TDS',
@@ -67,8 +83,9 @@ export const FREQUENCY_PRESETS: FrequencyPreset[] = [
     expansion: 'Ter die semis',
     dosesPerDay: 3,
     icon: '\u25D1',
-    defaultTimes: ['08:00', '14:00', '20:00'],
-    blurb: 'Morning, afternoon, night',
+    defaultAnchor: '07:00',
+    defaultTimes: spread(3, '07:00'),
+    blurb: 'Every 8 hours — set your first dose and the rest follow',
   },
   {
     code: 'QID',
@@ -77,8 +94,9 @@ export const FREQUENCY_PRESETS: FrequencyPreset[] = [
     expansion: 'Quater in die',
     dosesPerDay: 4,
     icon: '\u25A3',
-    defaultTimes: ['08:00', '12:00', '16:00', '20:00'],
-    blurb: 'Spread across the day',
+    defaultAnchor: '06:00',
+    defaultTimes: spread(4, '06:00'),
+    blurb: 'Every 6 hours — set your first dose and the rest follow',
   },
   {
     code: 'QHS',
@@ -87,7 +105,8 @@ export const FREQUENCY_PRESETS: FrequencyPreset[] = [
     expansion: 'Hora somni',
     dosesPerDay: 1,
     icon: '\u263D',
-    defaultTimes: ['22:30'],
+    defaultAnchor: '22:30',
+    defaultTimes: spread(1, '22:30'),
     blurb: 'Once, before sleep',
   },
 ]
@@ -95,6 +114,87 @@ export const FREQUENCY_PRESETS: FrequencyPreset[] = [
 export const PRESET_BY_CODE = Object.fromEntries(
   FREQUENCY_PRESETS.map((p) => [p.code, p]),
 ) as Record<FreqCode, FrequencyPreset>
+
+/* ------------------------- anchored dosing ------------------------- */
+/*
+ * OD / BD / TDS / QID are anchored regimens: you pick the *first* dose and
+ * the others fall on an even spread around the clock. A QID started at
+ * 06:00 doses at 06:00, 12:00, 18:00 and 00:00; a BD started at 10:00
+ * doses at 10:00 and 22:00; a TDS started at 06:00 doses at 06:00, 14:00
+ * and 22:00. One input, the whole day falls into place.
+ */
+
+/** Minutes between doses for a code. 0 for once-daily codes. */
+export function gapMinutes(code: FreqCode): number {
+  const n = PRESET_BY_CODE[code].dosesPerDay
+  return n > 1 ? Math.round(1440 / n) : 0
+}
+
+/**
+ * Dose times for `code` when the first dose lands on `anchor`, in dosing
+ * order starting from that anchor. Wraps across midnight.
+ */
+export function timesFromAnchor(code: FreqCode, anchor: string): string[] {
+  return spread(PRESET_BY_CODE[code].dosesPerDay, anchor)
+}
+
+/** "Every 6 hours" / "Once a day" — how the anchored doses are spaced. */
+export function gapLabel(code: FreqCode): string {
+  const gap = gapMinutes(code)
+  if (!gap) return PRESET_BY_CODE[code].code === 'QHS' ? 'Once, at bedtime' : 'Once a day'
+  if (gap % 60 === 0) {
+    const h = gap / 60
+    return `Every ${h} hour${h === 1 ? '' : 's'}`
+  }
+  return `Every ${gap} minutes`
+}
+
+/** Clinical shorthand for the gap, e.g. "6h" or "90min". */
+export function shortGapLabel(code: FreqCode): string {
+  const gap = gapMinutes(code)
+  if (!gap) return 'once'
+  return gap % 60 === 0 ? `${gap / 60}h` : `${gap}min`
+}
+
+/**
+ * Does this regimen's spread run past midnight back into the early hours?
+ *
+ * Checks the *last* dose of the spread, not the next one: a QID started at
+ * 06:00 only reaches midnight on its fourth dose (06, 12, 18, 00:00).
+ * `>=` because landing exactly on 00:00 is the night dose.
+ */
+export function wrapsMidnight(code: FreqCode, anchor: string): boolean {
+  const last = PRESET_BY_CODE[code].dosesPerDay - 1
+  if (last < 1) return false
+  return timeToMinutes(anchor) + last * gapMinutes(code) >= 1440
+}
+
+/** Earliest time of day, the anchor a pre-anchoring schedule is read at. */
+export function earliestTime(ts: string[]): string {
+  if (!ts.length) return '09:00'
+  return [...ts].sort((a, b) => timeToMinutes(a) - timeToMinutes(b))[0]
+}
+
+/** The schedule's first dose — its stored anchor, else the earliest time. */
+export function anchorOf(s: FixedSchedule): string {
+  return s.anchor ?? earliestTime(s.times)
+}
+
+/**
+ * Are these times an even spread from their own earliest dose?
+ *
+ * Lets the editor pick the right editing mode without asking: a regimen
+ * saved as 09:00/21:00 is already anchored, an odd 08:00/12:00/16:00/20:00
+ * is not. Comparison is order-insensitive because a wrap past midnight
+ * only rotates the same set of times.
+ */
+export function isAnchored(code: FreqCode, ts: string[]): boolean {
+  if (!ts.length) return true
+  const expected = timesFromAnchor(code, earliestTime(ts))
+  if (expected.length !== ts.length) return false
+  const have = [...ts].sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
+  return expected.every((t, i) => t === have[i])
+}
 
 /* ------------------------- interval helpers ------------------------ */
 
@@ -122,6 +222,25 @@ export function intervalLabel(s: IntervalSchedule): string {
 export function intervalCode(s: IntervalSchedule): string {
   const mark = s.unit === 'minutes' ? 'm' : s.unit === 'hours' ? 'h' : 'd'
   return `q${s.every}${mark}`
+}
+
+/** Minutes between doses for an interval schedule, 0 for a multi-day one. */
+export function intervalStepMinutes(s: IntervalSchedule): number {
+  if (s.unit === 'minutes') return s.every
+  if (s.unit === 'hours') return s.every * 60
+  return 0
+}
+
+/**
+ * The clock times an interval schedule hits within a day, starting from
+ * its anchor. Capped so a q30min doesn't print 48 chips.
+ */
+export function intervalDayTimes(s: IntervalSchedule, cap = 8): string[] {
+  const step = intervalStepMinutes(s)
+  if (step <= 0) return []
+  const perDay = Math.max(1, Math.floor(1440 / step))
+  const start = timeToMinutes(s.anchorTime)
+  return Array.from({ length: Math.min(cap, perDay) }, (_, i) => minutesToTime(start + i * step))
 }
 
 /** Human summary of any schedule. */
@@ -220,7 +339,17 @@ export function dosesPerDay(med: Medication): number {
 /* ----------------------------- factories --------------------------- */
 
 export function makeFixedSchedule(code: FreqCode, times?: string[]): FixedSchedule {
-  return { kind: 'fixed', code, times: times ?? [...PRESET_BY_CODE[code].defaultTimes] }
+  return {
+    kind: 'fixed',
+    code,
+    times: times ?? [...PRESET_BY_CODE[code].defaultTimes],
+    anchor: PRESET_BY_CODE[code].defaultAnchor,
+  }
+}
+
+/** An anchored schedule: the given first dose, and the rest derived from it. */
+export function makeAnchoredSchedule(code: FreqCode, anchor: string): FixedSchedule {
+  return { kind: 'fixed', code, times: timesFromAnchor(code, anchor), anchor }
 }
 
 export function makeIntervalSchedule(

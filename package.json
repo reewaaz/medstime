@@ -14,7 +14,8 @@
     "audit:layout": "node scripts/audit.mjs",
     "audit:pwa": "node scripts/pwa-check.mjs",
     "audit:reminders": "node scripts/reminder-check.mjs",
-    "audit": "npm run test && npm run audit:layout && npm run audit:pwa && npm run audit:reminders",
+    "audit:schedule": "node scripts/schedule-check.mjs",
+    "audit": "npm run test && npm run audit:layout && npm run audit:pwa && npm run audit:reminders && npm run audit:schedule",
     "shots": "node scripts/screenshot.mjs"
   },
   "dependencies": {

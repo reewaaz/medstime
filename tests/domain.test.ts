@@ -8,16 +8,25 @@ import assert from 'node:assert/strict'
 
 import { dateKey, minutesToTime, startOfDay, timeToMinutes } from '../src/lib/date.ts'
 import {
+  anchorOf,
   dosesPerDay,
+  earliestTime,
+  FREQUENCY_PRESETS,
+  gapLabel,
   intervalCode,
+  intervalDayTimes,
   intervalLabel,
+  isAnchored,
+  makeAnchoredSchedule,
   makeFixedSchedule,
   makeIntervalSchedule,
   scheduleLabel,
   slotsForDay,
+  timesFromAnchor,
+  wrapsMidnight,
 } from '../src/lib/schedule.ts'
 import { adherenceOver, perMedication, statsForDay } from '../src/lib/stats.ts'
-import type { AppState, Medication } from '../src/lib/types.ts'
+import type { AppState, FixedSchedule, Medication } from '../src/lib/types.ts'
 
 /* ----------------------------- helpers ------------------------------ */
 
@@ -81,12 +90,12 @@ describe('fixed schedules', () => {
 
   test('TDS produces three', () => {
     const m = med({ id: 'tds', schedule: makeFixedSchedule('TDS') })
-    assert.deepEqual(times(slotsForDay(m, '2026-03-01')), ['08:00', '14:00', '20:00'])
+    assert.deepEqual(times(slotsForDay(m, '2026-03-01')), ['07:00', '15:00', '23:00'])
   })
 
   test('QID produces four', () => {
     const m = med({ id: 'qid', schedule: makeFixedSchedule('QID') })
-    assert.deepEqual(times(slotsForDay(m, '2026-03-01')), ['08:00', '12:00', '16:00', '20:00'])
+    assert.deepEqual(times(slotsForDay(m, '2026-03-01')), ['00:00', '06:00', '12:00', '18:00'])
   })
 
   test('slots are sorted even if times are given out of order', () => {
@@ -126,6 +135,152 @@ describe('fixed schedules', () => {
 
   test('as-needed produces no slots', () => {
     assert.equal(slotsForDay(med({ id: 'prn', schedule: { kind: 'prn' } }), '2026-03-01').length, 0)
+  })
+})
+
+/* ------------------------- anchored dosing ------------------------- */
+
+describe('anchored dose timing', () => {
+  test('BD at 10:00 puts the next dose at 22:00', () => {
+    assert.deepEqual(timesFromAnchor('BD', '10:00'), ['10:00', '22:00'])
+  })
+
+  test('TDS at 06:00 gives 06:00, 14:00, 22:00', () => {
+    assert.deepEqual(timesFromAnchor('TDS', '06:00'), ['06:00', '14:00', '22:00'])
+  })
+
+  test('QID at 06:00 gives 06:00, 12:00, 18:00, midnight', () => {
+    assert.deepEqual(timesFromAnchor('QID', '06:00'), ['06:00', '12:00', '18:00', '00:00'])
+  })
+
+  test('OD keeps the single time it was given', () => {
+    assert.deepEqual(timesFromAnchor('OD', '07:15'), ['07:15'])
+    assert.deepEqual(timesFromAnchor('QHS', '22:30'), ['22:30'])
+  })
+
+  test('an anchor past midnight wraps into the early hours', () => {
+    assert.deepEqual(timesFromAnchor('QID', '18:00'), ['18:00', '00:00', '06:00', '12:00'])
+    assert.deepEqual(timesFromAnchor('BD', '00:00'), ['00:00', '12:00'])
+  })
+
+  test('off-grid anchors keep their minutes', () => {
+    assert.deepEqual(timesFromAnchor('TDS', '06:07'), ['06:07', '14:07', '22:07'])
+    assert.deepEqual(timesFromAnchor('QID', '23:50'), ['23:50', '05:50', '11:50', '17:50'])
+  })
+
+  test('every code yields exactly dosesPerDay times, all distinct', () => {
+    for (const p of FREQUENCY_PRESETS) {
+      const out = timesFromAnchor(p.code, '09:37')
+      assert.equal(out.length, p.dosesPerDay, `${p.code} dose count`)
+      assert.equal(new Set(out).size, p.dosesPerDay, `${p.code} times are distinct`)
+      for (const t of out) assert.match(t, /^([01]\d|2[0-3]):[0-5]\d$/, `${p.code} time format`)
+    }
+  })
+
+  test('gap labels read the way a clinician would say them', () => {
+    assert.equal(gapLabel('BD'), 'Every 12 hours')
+    assert.equal(gapLabel('TDS'), 'Every 8 hours')
+    assert.equal(gapLabel('QID'), 'Every 6 hours')
+    assert.equal(gapLabel('OD'), 'Once a day')
+  })
+
+  test('wrapsMidnight checks the last dose, not the next one', () => {
+    // QID from 06:00 only reaches midnight on its fourth dose.
+    assert.equal(wrapsMidnight('QID', '06:00'), true)
+    assert.equal(wrapsMidnight('QID', '18:00'), true)
+    assert.equal(wrapsMidnight('TDS', '21:00'), true)
+    assert.equal(wrapsMidnight('BD', '12:00'), true)
+    // ...and these genuinely finish before midnight.
+    assert.equal(wrapsMidnight('BD', '09:00'), false)
+    assert.equal(wrapsMidnight('TDS', '07:00'), false)
+    assert.equal(wrapsMidnight('QID', '00:00'), false)
+    assert.equal(wrapsMidnight('OD', '23:00'), false)
+  })
+
+  test('wrapsMidnight agrees with the derived times', () => {
+    for (const p of FREQUENCY_PRESETS) {
+      for (const anchor of ['00:00', '05:00', '06:00', '09:00', '12:00', '18:00', '22:00']) {
+        // A wrap means some dose lands earlier in the day than the first
+        // one — the spread rolled over the day boundary. Merely dosing at
+        // 00:00 is not a wrap: an OD at midnight starts the day there.
+        const rolledOver = timesFromAnchor(p.code, anchor).some(
+          (t) => timeToMinutes(t) < timeToMinutes(anchor),
+        )
+        assert.equal(wrapsMidnight(p.code, anchor), rolledOver, `${p.code} @ ${anchor}`)
+      }
+    }
+  })
+
+  test('the anchor survives a spread that crosses midnight', () => {
+    // The set is the same either way, but the *first dose* must not drift
+    // to midnight just because the regimen wraps.
+    const s = makeAnchoredSchedule('QID', '06:00')
+    assert.equal(anchorOf(s), '06:00')
+    assert.deepEqual(s.times, ['06:00', '12:00', '18:00', '00:00'])
+    assert.deepEqual(timesFromAnchor('QID', anchorOf(s)), s.times)
+  })
+
+  test('anchorOf falls back to the earliest time for older schedules', () => {
+    const legacy: FixedSchedule = { kind: 'fixed', code: 'BD', times: ['21:00', '09:00'] }
+    assert.equal(anchorOf(legacy), '09:00')
+  })
+
+  test('earliestTime finds the anchor regardless of stored order', () => {
+    assert.equal(earliestTime(['22:00', '06:00']), '06:00')
+    assert.equal(earliestTime(['00:00', '18:00']), '00:00')
+  })
+
+  test('isAnchored recognises an even spread, order-insensitively', () => {
+    assert.equal(isAnchored('BD', ['09:00', '21:00']), true)
+    // A wrap only rotates the same set, so this is still anchored.
+    assert.equal(isAnchored('QID', ['00:00', '06:00', '12:00', '18:00']), true)
+    // An uneven regimen is not.
+    assert.equal(isAnchored('QID', ['08:00', '12:00', '16:00', '20:00']), false)
+    assert.equal(isAnchored('BD', ['09:00']), false)
+  })
+
+  test('preset defaults are anchored to their own default anchor', () => {
+    for (const p of FREQUENCY_PRESETS) {
+      assert.deepEqual(
+        p.defaultTimes,
+        timesFromAnchor(p.code, p.defaultAnchor),
+        `${p.code} defaults`,
+      )
+      assert.equal(isAnchored(p.code, p.defaultTimes), true, `${p.code} is anchored`)
+    }
+  })
+
+  test('an anchored QID produces four slots on the day, midnight included', () => {
+    const m = med({
+      id: 'qid6',
+      schedule: makeFixedSchedule('QID', timesFromAnchor('QID', '06:00')),
+    })
+    assert.deepEqual(times(slotsForDay(m, '2026-03-01')), [
+      '00:00',
+      '06:00',
+      '12:00',
+      '18:00',
+    ])
+  })
+
+  test('an anchored BD produces two slots, 12 hours apart', () => {
+    const m = med({
+      id: 'bd10',
+      schedule: makeFixedSchedule('BD', timesFromAnchor('BD', '10:00')),
+    })
+    const slots = slotsForDay(m, '2026-03-01')
+    assert.deepEqual(times(slots), ['10:00', '22:00'])
+    assert.equal(slots[1].due - slots[0].due, 12 * 3_600_000)
+  })
+
+  test('an anchored TDS produces three slots, 8 hours apart', () => {
+    const m = med({
+      id: 'tds6',
+      schedule: makeFixedSchedule('TDS', timesFromAnchor('TDS', '06:00')),
+    })
+    const slots = slotsForDay(m, '2026-03-01')
+    assert.deepEqual(times(slots), ['06:00', '14:00', '22:00'])
+    assert.equal(slots[1].due - slots[0].due, 8 * 3_600_000)
   })
 })
 

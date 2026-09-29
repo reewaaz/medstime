@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   soonWindowMinutes: 60,
   dayStartHour: 0,
-  graceHours: 12,
+  graceHours: 24,
 }
 
 const EMPTY_STATE: AppState = {

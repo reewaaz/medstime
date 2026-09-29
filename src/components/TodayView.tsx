@@ -128,7 +128,11 @@ export function TodayView({
     day: 'numeric',
   })
 
-  const dayDoses = doses.filter((d) => d.slot.due > now - 12 * HOUR)
+  // Show every dose scheduled for today. An anchored QID has a midnight
+  // dose, and hiding it here would leave the timeline out of step with the
+  // progress ring, which counts all four. `graceHours` bounds how long a
+  // missed dose stays listed.
+  const dayDoses = doses.filter((d) => d.slot.due > now - state.settings.graceHours * HOUR)
   const remaining = dayDoses.filter((d) => d.status === 'pending')
 
   return (

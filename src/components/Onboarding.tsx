@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Icon } from './Icon'
 import { haptic, hapticsSupported, unlockHaptics } from '../lib/haptics'
+import { useInstallPrompt } from '../lib/install'
 import {
   notificationSupport,
   registerPeriodicSync,
@@ -24,7 +25,9 @@ const POINTS = [
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [notif, setNotif] = useState<NotifyPermissionState>(notificationSupport())
   const [hapticsOn, setHapticsOn] = useState(true)
+  const [installing, setInstalling] = useState(false)
   const supportsHaptics = hapticsSupported()
+  const { canPrompt, canOffer, installed, isIos, install } = useInstallPrompt()
 
   // A single "start" click satisfies the browser's gesture requirement.
   const begin = async () => {
@@ -36,6 +39,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       if (res === 'granted') await registerPeriodicSync()
     }
     onDone()
+  }
+
+  // Installing here is a user gesture, so Chromium will open its dialog.
+  const doInstall = async () => {
+    setInstalling(true)
+    haptic('success')
+    await install()
+    setInstalling(false)
   }
 
   useEffect(() => {
@@ -131,6 +142,41 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               />
             </div>
           </button>
+        ) : null}
+
+        {canOffer && !installed ? (
+          <motion.div
+            className="onboard__install"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.42, type: 'spring', stiffness: 300, damping: 28 }}
+          >
+            {canPrompt ? (
+              <button
+                className="btn btn--ghost btn--block"
+                onClick={doInstall}
+                disabled={installing}
+              >
+                <Icon name="download" size={16} />
+                {installing ? 'Installing…' : 'Add MedsTime to my home screen'}
+              </button>
+            ) : null}
+            <p className="field__hint" style={{ textAlign: 'center' }}>
+              {isIos ? (
+                <>
+                  On iPhone, tap{' '}
+                  <Icon
+                    name="share"
+                    size={11}
+                    style={{ display: 'inline', verticalAlign: '-2px' }}
+                  />{' '}
+                  Share, then <b>Add to Home Screen</b> — reminders then work offline.
+                </>
+              ) : (
+                'Runs full-screen, works offline, and keeps reminding you when the tab is closed.'
+              )}
+            </p>
+          </motion.div>
         ) : null}
 
         <button className="btn btn--primary btn--block btn--lg" onClick={begin}>
